@@ -1,0 +1,169 @@
+# demo.confabulous.dev stack
+#
+# Adapted from confab-web/SELF-HOSTING.md production-setup section, with a
+# few demo-specific env vars layered on (DEMO_IDENTITY_EMAIL, MAX_USERS=0,
+# read-only/share toggles). Where this drifts from SELF-HOSTING.md, treat
+# it as a candidate fix upstream rather than a demo-only patch.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: confab
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: confab
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U confab"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging: *default-logging
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging: *default-logging
+
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set minio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      /usr/bin/mc mb minio/confab --ignore-existing;
+      exit 0;
+      "
+    logging: *default-logging
+
+  migrate:
+    image: ghcr.io/confabulousdev/confab-web:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["./migrate_db.sh"]
+    environment:
+      DATABASE_URL: postgres://confab:${POSTGRES_PASSWORD}@postgres:5432/confab?sslmode=disable
+    logging: *default-logging
+
+  app:
+    image: ghcr.io/confabulousdev/confab-web:latest
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-setup:
+        condition: service_completed_successfully
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://confab:${POSTGRES_PASSWORD}@postgres:5432/confab?sslmode=disable
+
+      # Storage
+      S3_ENDPOINT: minio:9000
+      S3_USE_SSL: "false"
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      BUCKET_NAME: confab
+
+      # Public URLs
+      FRONTEND_URL: https://demo.confabulous.dev
+      BACKEND_URL: https://demo.confabulous.dev
+      ALLOWED_ORIGINS: https://demo.confabulous.dev
+      INSECURE_DEV_MODE: "false"
+
+      # Secrets
+      CSRF_SECRET_KEY: ${CSRF_SECRET_KEY}
+
+      # Auth (the admin account row persists; ADMIN_BOOTSTRAP_* env vars can be removed after first login)
+      AUTH_PASSWORD_ENABLED: "true"
+      ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD}
+      ALLOWED_EMAIL_DOMAINS: confabulous.dev
+
+      # Team / admin
+      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL}
+      MAX_USERS: "0"
+      ENABLE_SHARE_CREATION: "false"
+      SHARE_ALL_SESSIONS_TO_AUTHENTICATED: "true"
+      ENABLE_ORG_ANALYTICS: "true"
+
+      # Demo identity. The app auto-impersonates anonymous visitors as this
+      # user and enforces read-only on writes from this identity.
+      DEMO_IDENTITY_EMAIL: demo@confabulous.dev
+
+      # Smart Recap (dedicated demo Anthropic key, capped at 50/mo)
+      SMART_RECAP_ENABLED: "true"
+      SMART_RECAP_MODEL: claude-haiku-4-5-20251001
+      SMART_RECAP_QUOTA_LIMIT: "50"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    logging: *default-logging
+
+  worker:
+    image: ghcr.io/confabulousdev/confab-web:latest
+    restart: unless-stopped
+    command: ["./confab", "worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-setup:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://confab:${POSTGRES_PASSWORD}@postgres:5432/confab?sslmode=disable
+      S3_ENDPOINT: minio:9000
+      S3_USE_SSL: "false"
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      BUCKET_NAME: confab
+      WORKER_POLL_INTERVAL: 1m
+      WORKER_MAX_SESSIONS: "10"
+
+      # Smart Recap (worker reads this for precompute)
+      SMART_RECAP_ENABLED: "true"
+      SMART_RECAP_MODEL: claude-haiku-4-5-20251001
+      SMART_RECAP_QUOTA_LIMIT: "50"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    logging: *default-logging
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    depends_on:
+      - app
+    logging: *default-logging
+
+volumes:
+  postgres_data:
+  minio_data:
+  caddy_data:
+  caddy_config:
+  caddy_logs:

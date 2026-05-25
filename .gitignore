@@ -1,0 +1,25 @@
+# OpenTofu / Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+tofu.tfvars
+terraform.tfvars
+*.auto.tfvars
+
+# Secrets
+.env
+secrets/
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Claude Code (personal/local — not for the repo)
+.claude/settings.local.json

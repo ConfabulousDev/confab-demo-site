@@ -1,0 +1,38 @@
+# Copy to terraform.tfvars (gitignored) and fill in real values.
+#
+# Secret generation:
+#   - postgres_password, minio_root_password: use `openssl rand -hex 24`
+#     (these end up in URL-style connection strings; base64 can contain `/+=`
+#      which break URL parsing — confirmed the hard way)
+#   - csrf_secret_key, admin_bootstrap_password: `openssl rand -base64 32` is fine
+
+linode_token = "your-linode-personal-access-token"
+
+# Public keys for SSH access to root + deploy user.
+ssh_authorized_keys = [
+  "ssh-ed25519 AAAA... you@laptop",
+]
+
+# Bundled Postgres user password.
+postgres_password = "REPLACE-WITH-STRONG-PASSWORD"
+
+# MinIO root credentials. Used as AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY for the app + worker.
+minio_root_user     = "confab-demo"
+minio_root_password = "REPLACE-WITH-STRONG-PASSWORD"
+
+# App CSRF secret (32+ chars).
+csrf_secret_key = "REPLACE-WITH-32+CHAR-RANDOM-STRING"
+
+# Admin account, created on first boot. The account row persists in the DB;
+# remove ADMIN_BOOTSTRAP_PASSWORD from .env on the VM after first successful login.
+admin_bootstrap_email    = "admin@example.com"
+admin_bootstrap_password = "REPLACE-WITH-STRONG-PASSWORD"
+
+# Super-admin access (comma-separated for multiple). Surfaces the admin panel.
+super_admin_emails = "admin@example.com"
+
+# Support email surfaced in the app UI.
+support_email = "support@example.com"
+
+# Dedicated Anthropic API key. Set a hard monthly billing cap on the account.
+anthropic_api_key = "sk-ant-xxxxxxxxxxxxxxxxxxxxxxxx"

@@ -1,0 +1,95 @@
+#cloud-config
+# Cloud-init config for demo.confabulous.dev VM.
+# Renders docker-compose + Caddyfile + .env on first boot, then starts the stack.
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - unattended-upgrades
+
+users:
+  - name: deploy
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    groups: docker
+    ssh_authorized_keys:
+%{ for key in ssh_authorized_keys ~}
+      - ${key}
+%{ endfor ~}
+
+write_files:
+  # Source-of-truth files from ../stack, base64-encoded so cloud-init doesn't have to escape them.
+  # Owned by deploy so `scripts/deploy.sh` can scp updates without sudo.
+  - path: /opt/confab/docker-compose.yml
+    encoding: base64
+    content: ${compose_yml_b64}
+    owner: deploy:deploy
+    permissions: '0644'
+
+  - path: /opt/confab/Caddyfile
+    encoding: base64
+    content: ${caddyfile_b64}
+    owner: deploy:deploy
+    permissions: '0644'
+
+  # Secrets rendered by OpenTofu from variables. Group ownership + perms get
+  # adjusted in runcmd after Docker install creates the `docker` group.
+  - path: /opt/confab/.env
+    content: |
+      POSTGRES_PASSWORD=${postgres_password}
+      MINIO_ROOT_USER=${minio_root_user}
+      MINIO_ROOT_PASSWORD=${minio_root_password}
+      CSRF_SECRET_KEY=${csrf_secret_key}
+      ADMIN_BOOTSTRAP_EMAIL=${admin_bootstrap_email}
+      ADMIN_BOOTSTRAP_PASSWORD=${admin_bootstrap_password}
+      SUPER_ADMIN_EMAILS=${super_admin_emails}
+      SUPPORT_EMAIL=${support_email}
+      ANTHROPIC_API_KEY=${anthropic_api_key}
+    owner: root:root
+    permissions: '0600'
+
+  # systemd unit that brings the stack up on boot.
+  - path: /etc/systemd/system/confab.service
+    content: |
+      [Unit]
+      Description=Confabulous stack
+      Requires=docker.service
+      After=docker.service network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      WorkingDirectory=/opt/confab
+      ExecStart=/usr/bin/docker compose up -d --remove-orphans
+      ExecStop=/usr/bin/docker compose down
+
+      [Install]
+      WantedBy=multi-user.target
+    owner: root:root
+    permissions: '0644'
+
+runcmd:
+  # Install Docker Engine + compose plugin from Docker's official apt repo.
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  - systemctl enable docker
+  - systemctl start docker
+  # Now that the docker group exists, add the deploy user to it and
+  # let docker-group members read /opt/confab/.env so deploy script can
+  # run `docker compose pull/up` without sudo.
+  - usermod -aG docker deploy
+  - chgrp docker /opt/confab/.env
+  - chmod 640 /opt/confab/.env
+  # Bring the stack up.
+  - systemctl daemon-reload
+  - systemctl enable confab.service
+  - systemctl start confab.service
