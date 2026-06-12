@@ -36,19 +36,12 @@ write_files:
     owner: deploy:deploy
     permissions: '0644'
 
-  # Secrets rendered by OpenTofu from variables. Group ownership + perms get
+  # Secrets rendered by OpenTofu from variables (same content as the `env_file`
+  # output that scripts/deploy.sh re-syncs). Group ownership + perms get
   # adjusted in runcmd after Docker install creates the `docker` group.
   - path: /opt/confab/.env
-    content: |
-      POSTGRES_PASSWORD=${postgres_password}
-      MINIO_ROOT_USER=${minio_root_user}
-      MINIO_ROOT_PASSWORD=${minio_root_password}
-      CSRF_SECRET_KEY=${csrf_secret_key}
-      ADMIN_BOOTSTRAP_EMAIL=${admin_bootstrap_email}
-      ADMIN_BOOTSTRAP_PASSWORD=${admin_bootstrap_password}
-      SUPER_ADMIN_EMAILS=${super_admin_emails}
-      SUPPORT_EMAIL=${support_email}
-      ANTHROPIC_API_KEY=${anthropic_api_key}
+    encoding: base64
+    content: ${env_b64}
     owner: root:root
     permissions: '0600'
 
