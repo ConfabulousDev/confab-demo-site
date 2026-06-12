@@ -26,19 +26,28 @@ data "http" "ssh_source_ip" {
 # Cloud-init user-data rendered with secrets + checked-in compose/Caddyfile.
 locals {
   ssh_cidr = "${chomp(data.http.ssh_source_ip.response_body)}/32"
+
+  # Single source of truth for /opt/confab/.env. Rendered onto the VM at first
+  # boot by cloud-init (below) AND exposed via the `env_file` output so
+  # scripts/deploy.sh can re-sync it on every deploy — keeping the live .env in
+  # step with terraform.tfvars instead of frozen at first-boot values.
+  env_content = <<-EOT
+    POSTGRES_PASSWORD=${var.postgres_password}
+    MINIO_ROOT_USER=${var.minio_root_user}
+    MINIO_ROOT_PASSWORD=${var.minio_root_password}
+    CSRF_SECRET_KEY=${var.csrf_secret_key}
+    ADMIN_BOOTSTRAP_EMAIL=${var.admin_bootstrap_email}
+    ADMIN_BOOTSTRAP_PASSWORD=${var.admin_bootstrap_password}
+    SUPER_ADMIN_EMAILS=${var.super_admin_emails}
+    SUPPORT_EMAIL=${var.support_email}
+    ANTHROPIC_API_KEY=${var.anthropic_api_key}
+  EOT
+
   user_data = templatefile("${path.module}/cloud-init.yaml.tftpl", {
-    ssh_authorized_keys      = var.ssh_authorized_keys
-    compose_yml_b64          = base64encode(file("${path.module}/../stack/docker-compose.yml"))
-    caddyfile_b64            = base64encode(file("${path.module}/../stack/Caddyfile"))
-    postgres_password        = var.postgres_password
-    minio_root_user          = var.minio_root_user
-    minio_root_password      = var.minio_root_password
-    csrf_secret_key          = var.csrf_secret_key
-    admin_bootstrap_email    = var.admin_bootstrap_email
-    admin_bootstrap_password = var.admin_bootstrap_password
-    super_admin_emails       = var.super_admin_emails
-    support_email            = var.support_email
-    anthropic_api_key        = var.anthropic_api_key
+    ssh_authorized_keys = var.ssh_authorized_keys
+    compose_yml_b64     = base64encode(file("${path.module}/../stack/docker-compose.yml"))
+    caddyfile_b64       = base64encode(file("${path.module}/../stack/Caddyfile"))
+    env_b64             = base64encode(local.env_content)
   })
 }
 
