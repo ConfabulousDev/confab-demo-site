@@ -11,6 +11,10 @@ x-logging: &default-logging
     max-size: "50m"
     max-file: "5"
 
+# Advance this tag for each deliberate confab-web upgrade. Keep migrate, app,
+# and worker on the same image so schema and application code match.
+x-confab-image: &confab-image ghcr.io/confabulousdev/confab-web:v0.7.3
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -29,7 +33,8 @@ services:
     logging: *default-logging
 
   minio:
-    image: minio/minio:latest
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
+    user: "0"
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -45,20 +50,20 @@ services:
     logging: *default-logging
 
   minio-setup:
-    image: minio/mc:latest
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
     depends_on:
       minio:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      /usr/bin/mc alias set minio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
-      /usr/bin/mc mb minio/confab --ignore-existing;
+      mc alias set minio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      mc mb minio/confab --ignore-existing;
       exit 0;
       "
     logging: *default-logging
 
   migrate:
-    image: ghcr.io/confabulousdev/confab-web:latest
+    image: *confab-image
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,7 +73,7 @@ services:
     logging: *default-logging
 
   app:
-    image: ghcr.io/confabulousdev/confab-web:latest
+    image: *confab-image
     restart: unless-stopped
     depends_on:
       migrate:
@@ -91,6 +96,7 @@ services:
       BACKEND_URL: https://demo.confabulous.dev
       ALLOWED_ORIGINS: https://demo.confabulous.dev
       INSECURE_DEV_MODE: "false"
+      TRUSTED_PROXY_HEADERS: X-Forwarded-For
 
       # Secrets
       CSRF_SECRET_KEY: ${CSRF_SECRET_KEY}
@@ -121,7 +127,7 @@ services:
     logging: *default-logging
 
   worker:
-    image: ghcr.io/confabulousdev/confab-web:latest
+    image: *confab-image
     restart: unless-stopped
     command: ["./confab", "worker"]
     depends_on:

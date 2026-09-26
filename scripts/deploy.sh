@@ -1,12 +1,13 @@
 #!/bin/sh
 #
-# Sync stack config to demo.confabulous.dev, pull the latest confab-web image,
-# and roll it out.
+# Sync stack config to demo.confabulous.dev, pull the pinned application and
+# MinIO images, and roll it out.
 #
 # What this does: render /opt/confab/.env from tofu (so terraform.tfvars stays
 # the single source of truth — see the `env_file` output), scp it plus
 # `stack/docker-compose.yml` and `stack/Caddyfile` to the VM, then SSH in:
-# `docker compose pull` (refreshes images), `docker compose run --rm migrate`
+# `docker compose pull migrate app worker minio minio-setup`,
+# `docker compose run --rm migrate`
 # (applies new DB migrations), `docker compose up -d` (recreates containers
 # whose image, config, or env changed). Postgres + MinIO volumes are untouched.
 #
@@ -104,8 +105,8 @@ ssh "${VM_USER}@${VM_HOST}" '
   echo "→ install .env (root:docker 0640)"
   sudo install -o root -g docker -m 640 /tmp/confab.env /opt/confab/.env
   rm -f /tmp/confab.env
-  echo "→ docker compose pull"
-  docker compose pull
+  echo "→ pull pinned application and MinIO images"
+  docker compose pull migrate app worker minio minio-setup
   echo "→ docker compose run --rm migrate"
   docker compose run --rm migrate
   echo "→ docker compose up -d"

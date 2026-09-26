@@ -8,7 +8,7 @@ Single Linode VM (~$7/mo: $5 Nanode 1GB + $2 Backups) running the standard self-
 
 - `tofu/` — Linode VM provisioning. Uses the `linode/linode` provider. DNS is added manually in Cloudflare (see below).
 - `stack/` — `docker-compose.yml`, `Caddyfile`, `.env.example` for the demo stack. Source-of-truth; rendered onto the VM by cloud-init at first boot.
-- `scripts/deploy.sh` — sync `docker-compose.yml` + `Caddyfile` to the VM, pull the latest `confab-web` image, run migrations, restart containers. Does not touch infra or secrets (`.env` stays manual).
+- `scripts/deploy.sh` — sync `docker-compose.yml` + `Caddyfile` to the VM, pull the pinned app and MinIO images, run migrations, restart containers. It renders `.env` from OpenTofu state; `tofu/terraform.tfvars` is the source for secrets.
 
 ## Adapt for your own deployment
 
@@ -61,11 +61,25 @@ Cloudflare API access is intentionally not part of the OpenTofu config — keepi
 
 ## Deploying updates
 
+The running version is available at `https://demo.confabulous.dev/api/v1/version`.
+To upgrade, review release notes since that version, change the single
+`x-confab-image` tag in `stack/docker-compose.yml`, and reconcile the stack
+with the release's self-hosting Compose file. The migrate, app, and worker
+services all use that tag. MinIO images are also pinned in the Compose file.
+Before running migrations, confirm a recent Linode backup or take a database
+backup; schema and data migrations may complicate rollback.
+
 ```sh
 ./scripts/deploy.sh
+curl -fsS https://demo.confabulous.dev/api/v1/version
 ```
 
-Syncs `stack/docker-compose.yml` + `Caddyfile` to the VM, pulls the latest `ghcr.io/confabulousdev/confab-web:latest` image, runs DB migrations, restarts containers. Use this for both image updates and `docker-compose.yml` config changes (e.g. flipping feature flags). Secrets in `.env` still need to be edited on the VM directly.
+The script syncs `stack/docker-compose.yml` and `Caddyfile`, pulls the pinned
+app and MinIO images, runs DB migrations, and restarts containers. It renders
+`.env` from the OpenTofu `env_file` output on each deploy. Edit
+`tofu/terraform.tfvars` for secret or email changes; the drift guard stops
+unexpected changes to existing live values. The script does not pull new
+Postgres or Caddy images during an app upgrade.
 
 ## Stack reference
 
