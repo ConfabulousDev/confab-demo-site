@@ -1,4 +1,4 @@
-# demo.confabulous.dev stack
+# code-demo.confabulous.dev stack
 #
 # Adapted from confab-web/SELF-HOSTING.md production-setup section, with a
 # few demo-specific env vars layered on (DEMO_IDENTITY_EMAIL, MAX_USERS=0,
@@ -92,9 +92,9 @@ services:
       BUCKET_NAME: confab
 
       # Public URLs
-      FRONTEND_URL: https://demo.confabulous.dev
-      BACKEND_URL: https://demo.confabulous.dev
-      ALLOWED_ORIGINS: https://demo.confabulous.dev
+      FRONTEND_URL: https://code-demo.confabulous.dev
+      BACKEND_URL: https://code-demo.confabulous.dev
+      ALLOWED_ORIGINS: https://code-demo.confabulous.dev
       INSECURE_DEV_MODE: "false"
       TRUSTED_PROXY_HEADERS: X-Forwarded-For
 

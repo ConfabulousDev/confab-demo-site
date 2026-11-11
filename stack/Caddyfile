@@ -1,4 +1,4 @@
-demo.confabulous.dev {
+code-demo.confabulous.dev {
 	reverse_proxy app:8080
 
 	log {

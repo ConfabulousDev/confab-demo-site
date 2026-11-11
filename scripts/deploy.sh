@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Sync stack config to demo.confabulous.dev, pull the pinned application and
+# Sync stack config to code-demo.confabulous.dev, pull the pinned application and
 # MinIO images, and roll it out.
 #
 # What this does: render /opt/confab/.env from tofu (so terraform.tfvars stays
@@ -9,7 +9,13 @@
 # `docker compose pull migrate app worker minio minio-setup`,
 # `docker compose run --rm migrate`
 # (applies new DB migrations), `docker compose up -d` (recreates containers
-# whose image, config, or env changed). Postgres + MinIO volumes are untouched.
+# whose image, config, or env changed), then `caddy reload` (a changed
+# bind-mounted Caddyfile doesn't recreate the caddy container). Postgres +
+# MinIO volumes are untouched.
+#
+# SSH/scp target: the VM's IP from the tofu `vm_ip` output, because the
+# hostname is proxied through Cloudflare, which doesn't pass SSH. Set VM_HOST
+# to override.
 #
 # Because .env is re-rendered every deploy, edit secrets/emails in
 # tofu/terraform.tfvars and run this — manual edits to /opt/confab/.env get
@@ -31,7 +37,6 @@
 
 set -eu
 
-VM_HOST="${VM_HOST:-demo.confabulous.dev}"
 VM_USER="${VM_USER:-deploy}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 STACK_DIR="$(cd "${SCRIPT_DIR}/../stack" && pwd)"
@@ -45,6 +50,15 @@ elif command -v terraform >/dev/null 2>&1; then
 else
   echo "error: neither 'tofu' nor 'terraform' found on PATH" >&2
   exit 1
+fi
+
+# SSH target: VM_HOST if set, else the VM's IP from tofu state.
+if [ -z "${VM_HOST:-}" ]; then
+  VM_HOST="$("${TF}" -chdir="${TOFU_DIR}" output -raw vm_ip 2>/dev/null || true)"
+  if [ -z "${VM_HOST}" ]; then
+    echo "error: VM_HOST unset and '${TF} output -raw vm_ip' returned nothing; run '${TF} apply' in tofu/ or set VM_HOST" >&2
+    exit 1
+  fi
 fi
 
 # Render .env from tfvars into private temp files, cleaned up on exit.
@@ -111,6 +125,8 @@ ssh "${VM_USER}@${VM_HOST}" '
   docker compose run --rm migrate
   echo "→ docker compose up -d"
   docker compose up -d
+  echo "→ caddy reload (picks up Caddyfile changes)"
+  docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
   echo "→ docker compose ps"
   docker compose ps
 '

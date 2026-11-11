@@ -112,4 +112,5 @@ resource "linode_firewall" "demo" {
 
 # DNS is managed manually in the Cloudflare dashboard.
 # After `tofu apply`, take the `vm_ip` output and add an A record:
-#   <your-domain> → <vm_ip>, proxied = false (grey-cloud, DNS-only).
+#   code-demo → <vm_ip>, proxied = true (orange cloud). Keep the name one
+#   level deep so Cloudflare's free Universal SSL (*.confabulous.dev) covers it.
