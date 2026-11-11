@@ -1,8 +1,8 @@
 # confab-demo-site
 
-Infra-as-code for [`demo.confabulous.dev`](https://demo.confabulous.dev) — the public, read-only Confabulous demo instance. Published as a worked example of self-hosting Confabulous; the canonical guide is [`confab-web/SELF-HOSTING.md`](https://github.com/ConfabulousDev/confab-web/blob/main/SELF-HOSTING.md).
+Infra-as-code for [`code-demo.confabulous.dev`](https://code-demo.confabulous.dev) — the public, read-only Confabulous demo instance. Published as a worked example of self-hosting Confabulous; the canonical guide is [`confab-web/SELF-HOSTING.md`](https://github.com/ConfabulousDev/confab-web/blob/main/SELF-HOSTING.md).
 
-Single Linode VM (~$7/mo: $5 Nanode 1GB + $2 Backups) running the standard self-hosting docker-compose stack — Postgres, MinIO, app, worker, Caddy — behind Cloudflare DNS-only.
+Single Linode VM (~$7/mo: $5 Nanode 1GB + $2 Backups) running the standard self-hosting docker-compose stack — Postgres, MinIO, app, worker, Caddy — behind the Cloudflare proxy.
 
 ## What's here
 
@@ -12,10 +12,10 @@ Single Linode VM (~$7/mo: $5 Nanode 1GB + $2 Backups) running the standard self-
 
 ## Adapt for your own deployment
 
-This repo deploys the literal `demo.confabulous.dev`. Before applying it as-is to your own infra:
+This repo deploys the literal `code-demo.confabulous.dev`. Before applying it as-is to your own infra:
 
 **Domain & deploy target**
-- Replace `demo.confabulous.dev` in `stack/Caddyfile`, `stack/docker-compose.yml`, the trailing DNS comment in `tofu/main.tf`, and the `VM_HOST` default in `scripts/deploy.sh`.
+- Replace `code-demo.confabulous.dev` in `stack/Caddyfile`, `stack/docker-compose.yml`, and the trailing DNS comment in `tofu/main.tf`. `scripts/deploy.sh` SSHes to the tofu `vm_ip` output, so it needs no change (set `VM_HOST` to override).
 
 **Auth & emails**
 - Set the admin / super-admin / support emails in `tofu/terraform.tfvars`, and update `ALLOWED_EMAIL_DOMAINS` in `stack/docker-compose.yml` to match.
@@ -48,10 +48,12 @@ tofu apply
 
 After `tofu apply`, copy the `vm_ip` output and add an A record in Cloudflare:
 
-- Name: `demo`
+- Name: `code-demo`
 - Content: `<vm_ip>`
-- Proxy status: **DNS only** (grey cloud)
+- Proxy status: **Proxied** (orange cloud)
 - TTL: Auto
+
+Keep the name one level below the zone (`code-demo.`, not `demo.code.`). Cloudflare's free Universal SSL edge cert covers only `*.confabulous.dev`; a deeper name needs Advanced Certificate Manager. Caddy still gets its own origin cert from Let's Encrypt via ACME, through the proxy. SSH can't go through the proxy, so `scripts/deploy.sh` connects to the `vm_ip` output directly.
 
 Cloudflare API access is intentionally not part of the OpenTofu config — keeping the demo zone token off this repo means a leaked secret can't touch prod DNS.
 
@@ -61,7 +63,7 @@ Cloudflare API access is intentionally not part of the OpenTofu config — keepi
 
 ## Deploying updates
 
-The running version is available at `https://demo.confabulous.dev/api/v1/version`.
+The running version is available at `https://code-demo.confabulous.dev/api/v1/version`.
 To upgrade, review release notes since that version, change the single
 `x-confab-image` tag in `stack/docker-compose.yml`, and reconcile the stack
 with the release's self-hosting Compose file. The migrate, app, and worker
@@ -71,11 +73,12 @@ backup; schema and data migrations may complicate rollback.
 
 ```sh
 ./scripts/deploy.sh
-curl -fsS https://demo.confabulous.dev/api/v1/version
+curl -fsS https://code-demo.confabulous.dev/api/v1/version
 ```
 
 The script syncs `stack/docker-compose.yml` and `Caddyfile`, pulls the pinned
-app and MinIO images, runs DB migrations, and restarts containers. It renders
+app and MinIO images, runs DB migrations, restarts containers, and reloads
+Caddy so Caddyfile changes take effect. It renders
 `.env` from the OpenTofu `env_file` output on each deploy. Edit
 `tofu/terraform.tfvars` for secret or email changes; the drift guard stops
 unexpected changes to existing live values. The script does not pull new
