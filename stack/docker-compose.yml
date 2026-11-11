@@ -13,7 +13,7 @@ x-logging: &default-logging
 
 # Advance this tag for each deliberate confab-web upgrade. Keep migrate, app,
 # and worker on the same image so schema and application code match.
-x-confab-image: &confab-image ghcr.io/confabulousdev/confab-web:v0.7.3
+x-confab-image: &confab-image ghcr.io/confabulousdev/confab-web:v0.8.0
 
 services:
   postgres:
